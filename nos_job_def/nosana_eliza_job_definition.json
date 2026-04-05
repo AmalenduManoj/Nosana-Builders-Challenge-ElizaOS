@@ -3,12 +3,13 @@
     {
       "id": "agent",
       "args": {
-        "image": "yourusername/nosana-eliza-agent:latest",
+        "image": "amalendumanoj/nosana-eliza-agent:latest",
         "expose": 3000,
         "env": {
           "OPENAI_API_KEY": "nosana",
-          "OPENAI_API_URL": "https://6vq2bcqphcansrs9b88ztxfs88oqy7etah2ugudytv2x.node.k8s.prd.nos.ci/v1",
-          "MODEL_NAME": "Qwen3.5-27B-AWQ-4bit",
+          "OPENAI_BASE_URL": "https://6vq2bcqphcansrs9b88ztxfs88oqy7etah2ugudytv2x.node.k8s.prd.nos.ci/v1",
+          "OPENAI_LARGE_MODEL": "Qwen3.5-27B-AWQ-4bit",
+          "OPENAI_SMALL_MODEL": "Qwen3.5-27B-AWQ-4bit",
           "SERVER_PORT": "3000",
           "NODE_ENV": "production"
         }

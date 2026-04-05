@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "start": "elizaos start --character ./characters/agent.character.json",
-    "dev": "elizaos dev --character ./characters/agent.character.json"
+    "dev": "elizaos dev --character ./characters/agent.character.json",
+    "ui:dev": "pnpm --dir ./ui dev",
+    "ui:build": "pnpm --dir ./ui build",
+    "ui:preview": "pnpm --dir ./ui preview"
   },
   "dependencies": {
     "@elizaos/core": "^1.0.0",

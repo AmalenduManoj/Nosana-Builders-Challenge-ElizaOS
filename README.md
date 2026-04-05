@@ -110,6 +110,32 @@ elizaos dev
 
 Open [http://localhost:3000](http://localhost:3000) to see the ElizaOS built-in client.
 
+### TaskForge Custom Frontend (React + Framer Motion)
+
+This repo also includes a modern custom UI in `ui/` for challenge demos.
+
+Run it with the agent backend:
+
+```bash
+# Terminal 1: start agent API + runtime
+pnpm start
+
+# Terminal 2: start custom TaskForge UI
+pnpm ui:dev
+```
+
+Open [http://127.0.0.1:4173](http://127.0.0.1:4173).
+
+Notes:
+- The custom UI talks to the backend at `http://127.0.0.1:3000` by default.
+- Override API URL by setting `VITE_TASKFORGE_API_BASE` before launching the UI.
+
+Build production UI bundle:
+
+```bash
+pnpm ui:build
+```
+
 ---
 
 ## Claim Your Nosana Builders Credits
@@ -135,8 +161,9 @@ Nosana provides a hosted **Qwen3.5-27B-AWQ-4bit** endpoint for challenge partici
 
 ```env
 OPENAI_API_KEY=nosana
-OPENAI_API_URL=https://6vq2bcqphcansrs9b88ztxfs88oqy7etah2ugudytv2x.node.k8s.prd.nos.ci/v1
-MODEL_NAME=Qwen3.5-27B-AWQ-4bit
+OPENAI_BASE_URL=https://6vq2bcqphcansrs9b88ztxfs88oqy7etah2ugudytv2x.node.k8s.prd.nos.ci/v1
+OPENAI_LARGE_MODEL=Qwen3.5-27B-AWQ-4bit
+OPENAI_SMALL_MODEL=Qwen3.5-27B-AWQ-4bit
 ```
 
 **Model Details:**
@@ -154,8 +181,9 @@ ollama serve
 
 ```env
 OPENAI_API_KEY=ollama
-OPENAI_API_URL=http://127.0.0.1:11434/v1
-MODEL_NAME=qwen3.5:27b
+OPENAI_BASE_URL=http://127.0.0.1:11434/v1
+OPENAI_LARGE_MODEL=qwen3.5:27b
+OPENAI_SMALL_MODEL=qwen3.5:27b
 ```
 
 ---
@@ -294,8 +322,9 @@ Edit `nos_job_def/nosana_eliza_job_definition.json` and update the Docker image 
         "ports": ["3000:3000"],
         "env": {
           "OPENAI_API_KEY": "nosana",
-          "OPENAI_API_URL": "https://6vq2bcqphcansrs9b88ztxfs88oqy7etah2ugudytv2x.node.k8s.prd.nos.ci/v1",
-          "MODEL_NAME": "Qwen3.5-27B-AWQ-4bit"
+          "OPENAI_BASE_URL": "https://6vq2bcqphcansrs9b88ztxfs88oqy7etah2ugudytv2x.node.k8s.prd.nos.ci/v1",
+          "OPENAI_LARGE_MODEL": "Qwen3.5-27B-AWQ-4bit",
+          "OPENAI_SMALL_MODEL": "Qwen3.5-27B-AWQ-4bit"
         }
       }
     }
