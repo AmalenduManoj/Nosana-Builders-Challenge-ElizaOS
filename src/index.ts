@@ -10,20 +10,80 @@
 
 import { type Plugin } from "@elizaos/core";
 
-/**
- * Example custom action.
- * Replace this with your own action logic.
- */
-const exampleAction = {
-  name: "EXAMPLE_ACTION",
-  description: "An example action — replace with your own.",
-  similes: ["DEMO", "SAMPLE"],
-  validate: async () => true,
-  handler: async (_runtime: unknown, message: { content: { text: string } }) => {
-    console.log("Custom action triggered with message:", message.content.text);
+type AgentMessage = { content?: { text?: string } };
+
+const hasContent = (message: AgentMessage): boolean => {
+  const text = message?.content?.text;
+  return typeof text === "string" && text.trim().length > 0;
+};
+
+const buildDailyPlanAction = {
+  name: "BUILD_DAILY_PLAN",
+  description:
+    "Trigger when the user asks for a day plan, schedule, or time-blocked task breakdown.",
+  similes: ["PLAN_DAY", "SCHEDULE_DAY", "TIME_BLOCK_PLAN"],
+  validate: async (_runtime: unknown, message: AgentMessage) => hasContent(message),
+  handler: async (_runtime: unknown, message: AgentMessage) => {
+    const text = message.content?.text ?? "";
+    console.log("BUILD_DAILY_PLAN input:", text);
     return true;
   },
-  examples: [],
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "I have 3 hours and need to finish slides, send invoices, and prep tomorrow's standup.",
+        },
+      },
+    ],
+  ],
+};
+
+const reprioritizeTasksAction = {
+  name: "REPRIORITIZE_TASKS",
+  description:
+    "Trigger when deadlines change or the user asks to reorder work by urgency and impact.",
+  similes: ["REORDER_TASKS", "REPLAN_DAY", "SHIFT_PRIORITIES"],
+  validate: async (_runtime: unknown, message: AgentMessage) => hasContent(message),
+  handler: async (_runtime: unknown, message: AgentMessage) => {
+    const text = message.content?.text ?? "";
+    console.log("REPRIORITIZE_TASKS input:", text);
+    return true;
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "My 4pm call moved to 1pm. Reprioritize the rest of my tasks.",
+        },
+      },
+    ],
+  ],
+};
+
+const draftReminderAction = {
+  name: "DRAFT_REMINDER",
+  description:
+    "Trigger when the user wants reminder text for follow-ups, meetings, or deadlines.",
+  similes: ["MAKE_REMINDER", "WRITE_REMINDER", "REMINDER_TEXT"],
+  validate: async (_runtime: unknown, message: AgentMessage) => hasContent(message),
+  handler: async (_runtime: unknown, message: AgentMessage) => {
+    const text = message.content?.text ?? "";
+    console.log("DRAFT_REMINDER input:", text);
+    return true;
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Draft a reminder message so I review my resume at 7:30pm.",
+        },
+      },
+    ],
+  ],
 };
 
 /**
@@ -32,9 +92,9 @@ const exampleAction = {
  * to activate it.
  */
 export const customPlugin: Plugin = {
-  name: "custom-plugin",
-  description: "My custom ElizaOS plugin",
-  actions: [exampleAction],
+  name: "taskforge-custom-plugin",
+  description: "Task automation actions for planning, reprioritization, and reminders",
+  actions: [buildDailyPlanAction, reprioritizeTasksAction, draftReminderAction],
   providers: [],
   evaluators: [],
 };

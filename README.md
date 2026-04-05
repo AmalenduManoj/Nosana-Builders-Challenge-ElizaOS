@@ -6,6 +6,33 @@ Build your own **personal AI agent** using [ElizaOS](https://elizaos.com) and de
 
 ---
 
+## Project Implementation: TaskForge
+
+This repository is currently implemented as **TaskForge**, a personal task automation agent focused on:
+
+- Building time-blocked daily plans from messy user intent
+- Reprioritizing plans when constraints change
+- Drafting reminder messages users can send immediately
+
+### Quick test prompts
+
+Use these in the built-in web UI after `elizaos dev`:
+
+1. "I have 2 hours and need to prepare a client update, pay invoices, and plan tomorrow. Build my day plan."
+2. "My priority changed; move client update earlier and replan the rest."
+3. "Draft two reminder messages: one for invoice submission and one for tomorrow planning."
+
+### Implementation files
+
+- `characters/agent.character.json` — TaskForge behavior, style, and examples
+- `src/index.ts` — custom action scaffolding for planning, reprioritization, reminders
+- `nos_job_def/nosana_eliza_job_definition.json` — deployment template for Nosana
+- `docs/demo-script.md` — one-minute demo script
+- `docs/submission-description-300w.md` — submission-ready project description
+- `docs/submission-checklist.md` — final requirement checklist
+
+---
+
 ## The Challenge
 
 Inspired by [OpenClaw](https://openclaw.ai/) — the self-hosted personal AI movement — this challenge is about giving AI back to the individual. Build an agent that runs on **your own infrastructure**, handles **your own tasks**, and keeps **your own data**.
