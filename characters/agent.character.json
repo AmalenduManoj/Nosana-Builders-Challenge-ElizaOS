@@ -2,6 +2,7 @@
   "name": "TaskForge",
   "username": "taskforge",
   "plugins": [
+    "taskforge",
     "@elizaos/plugin-bootstrap",
     "@elizaos/plugin-openai",
     "@elizaos/plugin-sql"

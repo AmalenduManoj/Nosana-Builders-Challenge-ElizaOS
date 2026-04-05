@@ -350,6 +350,78 @@ body {
   gap: 0.5rem;
 }
 
+.gmail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+
+.gmail-action-btn {
+  border: 1px solid rgba(118, 151, 195, 0.34);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.55rem 0.6rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.gmail-action-btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.gmail-form {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+
+.gmail-form input,
+.gmail-form textarea {
+  background: rgba(8, 13, 22, 0.56);
+  border: 1px solid rgba(118, 151, 195, 0.32);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.56rem 0.68rem;
+  font: inherit;
+}
+
+.gmail-status {
+  margin: 0 0 0.8rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.gmail-classified-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.8rem;
+}
+
+.gmail-classified-item {
+  border: 1px solid rgba(118, 151, 195, 0.26);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+}
+
+.gmail-classified-item header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.45rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.gmail-classified-item strong {
+  color: var(--highlight);
+}
+
+.gmail-classified-item p {
+  margin: 0.28rem 0 0;
+}
+
 .email-card,
 .note-item {
   border: 1px solid rgba(118, 151, 195, 0.26);
@@ -610,6 +682,10 @@ body {
 
   .grid.two-col,
   .grid.three-col {
+    grid-template-columns: 1fr;
+  }
+
+  .gmail-actions {
     grid-template-columns: 1fr;
   }
 

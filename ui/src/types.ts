@@ -38,3 +38,14 @@ export type ChannelSubmitResponse = {
     actions?: string[];
   };
 };
+
+export type AssistantResponse = {
+  success: boolean;
+  error?: string;
+  data?: {
+    reply?: string;
+    intent?: string;
+    suggestions?: string[];
+    generatedAt?: number;
+  };
+};
