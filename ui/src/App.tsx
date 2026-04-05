@@ -9,10 +9,75 @@ import type {
 } from "./types";
 
 const API_BASE = (import.meta.env.VITE_TASKFORGE_API_BASE as string | undefined)?.trim() || "http://127.0.0.1:3000";
+const NAV_ITEMS = ["Dashboard", "Tasks", "Habits", "Email", "Knowledge", "Finance", "AI Assistant"] as const;
+type NavItem = (typeof NAV_ITEMS)[number];
+
 const QUICK_PROMPTS = [
   "I have 2 hours: coding bugfixes + release notes. Build my plan.",
-  "My review call moved earlier. Reprioritize everything.",
-  "Draft two reminders: one for deploy checklist, one for PR follow-up.",
+  "I have 45 minutes free before dinner. What should I finish first?",
+  "Draft reminder messages for bills, workout, and tomorrow planning.",
+];
+
+const TODAY_SCHEDULE = [
+  { time: "09:00", label: "Inbox triage", status: "done" },
+  { time: "11:00", label: "Deep work: release prep", status: "active" },
+  { time: "14:30", label: "Workout + recovery", status: "upcoming" },
+  { time: "17:00", label: "Budget review", status: "upcoming" },
+];
+
+const PRIORITIES = [
+  "Finalize release notes and push build",
+  "Reply to urgent personal email threads",
+  "Log today's expenses before 8 PM",
+];
+
+const NOTIFICATIONS = [
+  "You have a 52-minute gap before your next meeting. Suggested task: finish release notes.",
+  "Habit risk detected: hydration streak may break today. Add a quick reminder.",
+  "Two urgent emails are unanswered for over 4 hours.",
+];
+
+const KANBAN = {
+  todo: ["Plan weekly groceries", "Upload tax receipts"],
+  doing: ["Ship bugfix patch", "Prepare tomorrow's top 3"],
+  done: ["Morning journal", "Invoice follow-up"],
+};
+
+const HABIT_CARDS = [
+  { label: "Workout", streak: 8, confidence: 86 },
+  { label: "Reading", streak: 14, confidence: 91 },
+  { label: "No-spend day", streak: 3, confidence: 63 },
+];
+
+const EMAIL_GROUPS = [
+  {
+    title: "Work",
+    count: 11,
+    summary: "Most threads are status requests. Suggested batch-reply window: 4:30 PM.",
+  },
+  {
+    title: "Personal",
+    count: 7,
+    summary: "Family planning thread pending reply and one travel confirmation.",
+  },
+  {
+    title: "Urgent",
+    count: 2,
+    summary: "One payment issue and one same-day document request.",
+  },
+];
+
+const KNOWLEDGE_NOTES = [
+  { title: "Apartment move checklist", summary: "17 actionable items, 3 blocked by paperwork." },
+  { title: "Q2 goals", summary: "Focus areas: health consistency, shipping side project milestones." },
+  { title: "Travel packing template", summary: "Optimized list with weather-based variants." },
+];
+
+const FINANCE_BARS = [
+  { label: "Food", value: 62 },
+  { label: "Transport", value: 37 },
+  { label: "Subscriptions", value: 24 },
+  { label: "Leisure", value: 41 },
 ];
 
 const parseMinutes = (text: string): number => {
@@ -25,16 +90,23 @@ const parseMinutes = (text: string): number => {
 };
 
 const extractItems = (text: string): string[] => {
-  const cleaned = text
-    .replace(/\?/g, "")
-    .replace(/\b(build|plan|please|today|now|need to|i have)\b/gi, "")
-    .split(/,|\+|\band\b|\bthen\b/gi)
-    .map((item) => item.trim())
+  const normalized = text
+    .replace(/\?+/g, "")
+    .replace(/\b(build|create|make)\s+(my\s+)?(plan|schedule|timeline)\b/gi, "")
+    .replace(/\bi\s+have\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?|h|minutes?|mins?|m)\s*:?/gi, "")
+    .replace(/\b(i\s+need\s+to|need\s+to)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const parts = normalized
+    .split(/\+|,|\band\b|\bthen\b/gi)
+    .map((item) => item.replace(/[.;:]+$/g, "").trim())
     .filter((item) => item.length > 2)
+    .filter((item) => !/^(my|the|a)$/i.test(item))
     .slice(0, 5);
 
-  if (cleaned.length > 0) {
-    return cleaned;
+  if (parts.length > 0) {
+    return parts;
   }
 
   return ["Primary task", "Secondary task", "Review and wrap-up"];
@@ -106,7 +178,13 @@ const bubbleIntro = {
   visible: { opacity: 1, y: 0 },
 };
 
+const getHeatValue = (index: number): number => {
+  const wave = Math.sin(index / 3.2) * 0.5 + 0.5;
+  return Number((0.2 + wave * 0.8).toFixed(2));
+};
+
 export function App() {
+  const [activeTab, setActiveTab] = useState<NavItem>("Dashboard");
   const [agent, setAgent] = useState<Agent | null>(null);
   const [serverId, setServerId] = useState<string>("00000000-0000-0000-0000-000000000000");
   const [channelId] = useState<string>(() => getPersistentId("taskforge_channel_id"));
@@ -122,6 +200,7 @@ export function App() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [statusText, setStatusText] = useState("Booting...");
+  const [searchNote, setSearchNote] = useState("");
 
   const canSend = input.trim().length > 0 && !isLoading;
 
@@ -187,11 +266,21 @@ export function App() {
   const stats = useMemo(
     () => [
       { label: "Agent", value: agent?.name || "Not Connected" },
-      { label: "Mode", value: "Execution-first" },
+      { label: "Productivity", value: "84% focus score" },
+      { label: "Open Loops", value: "17 active" },
       { label: "API", value: API_BASE.replace(/^https?:\/\//, "") },
     ],
     [agent]
   );
+
+  const filteredNotes = useMemo(() => {
+    if (!searchNote.trim()) {
+      return KNOWLEDGE_NOTES;
+    }
+    return KNOWLEDGE_NOTES.filter((note) =>
+      `${note.title} ${note.summary}`.toLowerCase().includes(searchNote.toLowerCase())
+    );
+  }, [searchNote]);
 
   const appendUserMessage = (text: string): ChatMessage => {
     const userMessage: ChatMessage = {
@@ -291,49 +380,214 @@ export function App() {
     void sendMessage(input);
   };
 
-  return (
-    <div className="app-shell">
-      <div className="ambient ambient-a" />
-      <div className="ambient ambient-b" />
-
-      <main className="layout">
-        <motion.header
-          className="hero"
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55 }}
-        >
-          <div>
-            <p className="eyebrow">Nosana x ElizaOS</p>
-            <h1>TaskForge Console</h1>
-            <p className="subtext">
-              A focused command center for daily plans, fast reprioritization, and reminder drafts.
-            </p>
+  const renderDashboard = () => {
+    return (
+      <section className="grid two-col">
+        <article className="card">
+          <h3>Today's Schedule</h3>
+          <div className="timeline">
+            {TODAY_SCHEDULE.map((slot) => (
+              <div key={slot.time} className={`timeline-row ${slot.status}`}>
+                <span>{slot.time}</span>
+                <p>{slot.label}</p>
+              </div>
+            ))}
           </div>
-          <motion.div className="status-pill" whileHover={{ y: -2 }}>
-            <span className="dot" />
-            {statusText}
-          </motion.div>
-        </motion.header>
+        </article>
 
-        <section className="stats-grid">
-          {stats.map((item, idx) => (
-            <motion.article
-              key={item.label}
-              className="stat-card"
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.06, duration: 0.4 }}
-            >
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-            </motion.article>
-          ))}
-        </section>
+        <article className="card">
+          <h3>AI Priorities</h3>
+          <ul className="plain-list">
+            {PRIORITIES.map((item, index) => (
+              <li key={item}>
+                <strong>P{index + 1}</strong>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mini-progress">
+            <p>Productivity Insight: High focus window from 11:00-13:00.</p>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: "78%" }} />
+            </div>
+          </div>
+        </article>
+      </section>
+    );
+  };
 
-        <section className="chat-panel">
+  const renderTasks = () => {
+    return (
+      <section className="grid three-col">
+        {([
+          ["To Do", KANBAN.todo],
+          ["In Progress", KANBAN.doing],
+          ["Done", KANBAN.done],
+        ] as const).map(([title, items]) => (
+          <article key={title} className="card kanban-col">
+            <h3>{title}</h3>
+            {items.map((task) => (
+              <div key={task} className="task-chip">
+                <p>{task}</p>
+                <small>AI Priority: {Math.floor(Math.random() * 3) + 1}</small>
+              </div>
+            ))}
+          </article>
+        ))}
+      </section>
+    );
+  };
+
+  const renderHabits = () => {
+    return (
+      <section className="grid two-col">
+        <article className="card">
+          <h3>Streaks and Predictive Insights</h3>
+          <div className="habit-cards">
+            {HABIT_CARDS.map((habit) => (
+              <div key={habit.label} className="habit-card">
+                <strong>{habit.label}</strong>
+                <span>{habit.streak} day streak</span>
+                <div className="progress-track">
+                  <div className="progress-fill alt" style={{ width: `${habit.confidence}%` }} />
+                </div>
+                <small>{habit.confidence}% likelihood of keeping streak tomorrow</small>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="card">
+          <h3>Consistency Heatmap</h3>
+          <div className="heatmap">
+            {Array.from({ length: 35 }).map((_, index) => (
+              <span
+                key={index}
+                style={{ opacity: getHeatValue(index) }}
+                title={`Day ${index + 1}`}
+              />
+            ))}
+          </div>
+        </article>
+      </section>
+    );
+  };
+
+  const renderEmail = () => {
+    return (
+      <section className="grid two-col">
+        <article className="card">
+          <h3>Categorized Inbox</h3>
+          <div className="email-categories">
+            {EMAIL_GROUPS.map((group) => (
+              <div key={group.title} className="email-card">
+                <header>
+                  <strong>{group.title}</strong>
+                  <span>{group.count}</span>
+                </header>
+                <p>{group.summary}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="card">
+          <h3>Suggested Replies</h3>
+          <div className="plain-list replies">
+            <li>
+              <strong>Work</strong>
+              <span>"Shipping by EOD. I'll share final notes and blockers at 5 PM."</span>
+            </li>
+            <li>
+              <strong>Personal</strong>
+              <span>"Confirmed for Sunday. I'll bring the documents and call ahead."</span>
+            </li>
+            <li>
+              <strong>Urgent</strong>
+              <span>"Received. Reviewing now and will respond within 20 minutes."</span>
+            </li>
+          </div>
+        </article>
+      </section>
+    );
+  };
+
+  const renderKnowledge = () => {
+    return (
+      <section className="grid two-col">
+        <article className="card">
+          <h3>Personal Knowledge Base</h3>
+          <input
+            className="search-input"
+            placeholder="Semantic search notes..."
+            value={searchNote}
+            onChange={(event) => setSearchNote(event.target.value)}
+          />
+          <div className="notes-list">
+            {filteredNotes.map((note) => (
+              <div key={note.title} className="note-item">
+                <strong>{note.title}</strong>
+                <p>{note.summary}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="card">
+          <h3>AI Summary Lens</h3>
+          <p>
+            Most notes indicate scheduling friction around admin tasks. Suggested strategy: reserve a
+            daily 25-minute admin sprint before the evening shutdown routine.
+          </p>
+        </article>
+      </section>
+    );
+  };
+
+  const renderFinance = () => {
+    return (
+      <section className="grid two-col">
+        <article className="card">
+          <h3>Expense Categories</h3>
+          <div className="bar-chart">
+            {FINANCE_BARS.map((bar) => (
+              <div key={bar.label} className="bar-row">
+                <span>{bar.label}</span>
+                <div className="bar-track">
+                  <div className="bar-fill" style={{ width: `${bar.value}%` }} />
+                </div>
+                <strong>{bar.value}%</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="card">
+          <h3>Spending Insight</h3>
+          <div className="spend-donut" />
+          <p>
+            Leisure spend is trending 12% above your monthly baseline. AI recommendation: cap weekend
+            discretionary budget and auto-tag subscriptions for review.
+          </p>
+        </article>
+      </section>
+    );
+  };
+
+  const renderAssistant = () => {
+    return (
+      <section className="grid single-col">
+        <article className="card">
+          <h3>AI Decision Assistant</h3>
+          <p>
+            Based on your calendar and deadlines: finish release notes now, then process urgent email,
+            then do a short habit checkpoint before evening.
+          </p>
+        </article>
+
+        <article className="card chat-panel">
           <div className="panel-header">
-            <h2>Live Agent Chat</h2>
+            <h3>Live Agent Chat</h3>
             <div className="prompt-row">
               {QUICK_PROMPTS.map((prompt) => (
                 <button
@@ -393,7 +647,7 @@ export function App() {
             <input
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              placeholder="Ask TaskForge to build a plan..."
+              placeholder="Ask TaskForge to optimize your life workflow..."
               aria-label="Message TaskForge"
             />
             <motion.button
@@ -405,7 +659,113 @@ export function App() {
               {isLoading ? "Working..." : "Send"}
             </motion.button>
           </form>
+        </article>
+      </section>
+    );
+  };
+
+  const renderMainContent = () => {
+    switch (activeTab) {
+      case "Dashboard":
+        return renderDashboard();
+      case "Tasks":
+        return renderTasks();
+      case "Habits":
+        return renderHabits();
+      case "Email":
+        return renderEmail();
+      case "Knowledge":
+        return renderKnowledge();
+      case "Finance":
+        return renderFinance();
+      case "AI Assistant":
+        return renderAssistant();
+      default:
+        return renderDashboard();
+    }
+  };
+
+  return (
+    <div className="app-shell">
+      <div className="ambient ambient-a" />
+      <div className="ambient ambient-b" />
+
+      <main className="layout shell-grid">
+        <aside className="sidebar">
+          <p className="eyebrow">Personal AI Stack</p>
+          <h2>TaskForge OS</h2>
+          <nav>
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item}
+                className={`side-link ${activeTab === item ? "active" : ""}`}
+                onClick={() => setActiveTab(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <section className="content">
+        <motion.header
+          className="hero"
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55 }}
+        >
+          <div>
+            <p className="eyebrow">Nosana x ElizaOS</p>
+            <h1>Personal Life Automation</h1>
+            <p className="subtext">
+              Manage schedule, tasks, habits, email, finance, and decisions through one AI-native
+              command center.
+            </p>
+          </div>
+          <motion.div className="status-pill" whileHover={{ y: -2 }}>
+            <span className="dot" />
+            {statusText}
+          </motion.div>
+        </motion.header>
+
+        <section className="stats-grid">
+          {stats.map((item, idx) => (
+            <motion.article
+              key={item.label}
+              className="stat-card"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.06, duration: 0.4 }}
+            >
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </motion.article>
+          ))}
         </section>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22 }}
+          >
+            {renderMainContent()}
+          </motion.div>
+        </AnimatePresence>
+        </section>
+
+        <aside className="right-rail card">
+          <h3>Context Notifications</h3>
+          <ul className="plain-list notifications">
+            {NOTIFICATIONS.map((item) => (
+              <li key={item}>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </aside>
       </main>
     </div>
   );
