@@ -96,6 +96,17 @@ type ModuleState = {
   suggestions: string[];
 };
 
+type InboxMailItem = {
+  id: string;
+  from: string;
+  subject: string;
+  snippet: string;
+  category: string;
+  confidence?: number;
+  reasons?: string[];
+  hasMeetingSignals?: boolean;
+};
+
 const getHeatValue = (index: number): number => {
   const wave = Math.sin(index / 3.2) * 0.5 + 0.5;
   return Number((0.2 + wave * 0.8).toFixed(2));
@@ -217,9 +228,11 @@ export function App() {
   const [gmailBody, setGmailBody] = useState("Hi,\n\nQuick update from TaskForge.\n\nRegards,");
   const [gmailStatusText, setGmailStatusText] = useState("No Gmail action yet.");
   const [gmailBusy, setGmailBusy] = useState(false);
-  const [gmailClassified, setGmailClassified] = useState<
-    Array<{ id: string; from: string; subject: string; category: string; snippet: string }>
-  >([]);
+  const [gmailClassified, setGmailClassified] = useState<InboxMailItem[]>([]);
+  const [inboxSummaryText, setInboxSummaryText] = useState("Run inbox summary to get AI-generated digest.");
+  const [inboxActionItems, setInboxActionItems] = useState<string[]>([]);
+  const [meetingSyncStatus, setMeetingSyncStatus] = useState("No calendar sync yet.");
+  const [selectedMailId, setSelectedMailId] = useState<string | null>(null);
 
   const canSend = input.trim().length > 0 && !isLoading;
 
@@ -543,25 +556,13 @@ export function App() {
       };
     });
 
-    return (
-      <section className="grid two-col">
-        <article className="card">
-          <h3>Categorized Inbox</h3>
-          <div className="email-categories">
-            {grouped.map((group) => (
-              <div key={group.title} className="email-card">
-                <header>
-                  <strong>{group.title}</strong>
-                  <span>{group.count}</span>
-                </header>
-                <p>{group.summary}</p>
-              </div>
-            ))}
-          </div>
-        </article>
+    const selectedMail =
+      gmailClassified.find((item) => item.id === selectedMailId) || gmailClassified[0] || null;
 
+    return (
+      <section className="grid single-col">
         <article className="card">
-          <h3>Gmail Quick Actions</h3>
+          <h3>Inbox Intelligence</h3>
           <div className="gmail-actions">
             <button
               type="button"
@@ -595,21 +596,29 @@ export function App() {
               onClick={async () => {
                 setGmailBusy(true);
                 try {
-                  const response = await fetch(`${API_BASE}/api/taskforge/gmail/unread?maxResults=10`);
+                  const response = await fetch(`${API_BASE}/api/taskforge/gmail/summary?maxResults=15`);
                   const json = await response.json();
                   if (!response.ok) {
-                    throw new Error(json?.error || "Unable to fetch unread emails");
+                    throw new Error(json?.error || "Unable to summarize inbox");
                   }
-                  const count = Number(json?.data?.unreadCountEstimate || 0);
-                  setGmailStatusText(`Fetch unread: ${count} unread (estimate).`);
+                  const items = Array.isArray(json?.data?.items) ? json.data.items : [];
+                  setGmailClassified(items);
+                  setSelectedMailId(items[0]?.id || null);
+                  setInboxSummaryText(json?.data?.summary || "No summary generated.");
+                  setInboxActionItems(Array.isArray(json?.data?.actionItems) ? json.data.actionItems : []);
+                  setGmailStatusText(
+                    `Inbox summary ready: analyzed ${Number(json?.data?.totalAnalyzed || 0)} mails, ${Number(
+                      json?.data?.meetingCandidates || 0
+                    )} meeting candidates.`
+                  );
                 } catch (error) {
-                  setGmailStatusText(error instanceof Error ? error.message : "Fetch unread failed");
+                  setGmailStatusText(error instanceof Error ? error.message : "Inbox summary failed");
                 } finally {
                   setGmailBusy(false);
                 }
               }}
             >
-              Fetch unread
+              Summarize inbox
             </button>
 
             <button
@@ -626,6 +635,7 @@ export function App() {
                   }
                   const items = Array.isArray(json?.data?.items) ? json.data.items : [];
                   setGmailClassified(items);
+                  setSelectedMailId(items[0]?.id || null);
                   const interviewCount = Number(json?.data?.interviewCount || 0);
                   const unreadEstimate = Number(json?.data?.unreadCountEstimate || 0);
                   setGmailStatusText(
@@ -640,7 +650,103 @@ export function App() {
             >
               Classify latest mail
             </button>
+
+            <button
+              type="button"
+              className="gmail-action-btn"
+              disabled={gmailBusy}
+              onClick={async () => {
+                setGmailBusy(true);
+                try {
+                  const response = await fetch(`${API_BASE}/api/taskforge/gmail/sync-meetings`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ maxResults: 20 }),
+                  });
+                  const json = await response.json();
+                  if (!response.ok) {
+                    throw new Error(json?.error || "Unable to sync meetings");
+                  }
+
+                  const added = Number(json?.data?.added?.length || 0);
+                  const skipped = Number(json?.data?.skipped?.length || 0);
+                  const failed = Number(json?.data?.failed?.length || 0);
+
+                  setMeetingSyncStatus(
+                    `Calendar sync complete: ${added} added, ${skipped} skipped, ${failed} failed. Reminder: ${json?.data?.reminderPolicy || "default"}.`
+                  );
+                  setGmailStatusText("Meeting candidates processed for Google Calendar.");
+                } catch (error) {
+                  setMeetingSyncStatus(error instanceof Error ? error.message : "Meeting sync failed");
+                } finally {
+                  setGmailBusy(false);
+                }
+              }}
+            >
+              Add meetings to Calendar
+            </button>
           </div>
+
+          <div className="email-modern-summary">
+            <p>{inboxSummaryText}</p>
+            <ul className="plain-list">
+              {inboxActionItems.length === 0 && <li><span>No action items yet.</span></li>}
+              {inboxActionItems.map((item) => (
+                <li key={item}>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="gmail-status">{meetingSyncStatus}</p>
+          </div>
+
+          <div className="email-modern-layout">
+            <div className="email-modern-list">
+              {gmailClassified.length === 0 && <p className="gmail-status">No analyzed inbox items yet.</p>}
+              {gmailClassified.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={`email-list-item ${selectedMail?.id === item.id ? "active" : ""}`}
+                  onClick={() => setSelectedMailId(item.id)}
+                >
+                  <div>
+                    <strong>{item.subject}</strong>
+                    <span>{item.from || "Unknown sender"}</span>
+                  </div>
+                  <small>{item.category}</small>
+                </button>
+              ))}
+            </div>
+
+            <div className="email-modern-detail">
+              {selectedMail ? (
+                <>
+                  <h4>{selectedMail.subject}</h4>
+                  <p>{selectedMail.snippet || "No preview snippet."}</p>
+                  <div className="email-detail-meta">
+                    <span>From: {selectedMail.from || "Unknown sender"}</span>
+                    <span>Category: {selectedMail.category}</span>
+                    {typeof selectedMail.confidence === "number" && <span>Confidence: {selectedMail.confidence}%</span>}
+                    {selectedMail.hasMeetingSignals && <span>Meeting signal detected</span>}
+                  </div>
+                  {Array.isArray(selectedMail.reasons) && selectedMail.reasons.length > 0 && (
+                    <div className="email-detail-tags">
+                      {selectedMail.reasons.map((reason) => (
+                        <span key={reason}>{reason}</span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="gmail-status">Select a mail item to view details.</p>
+              )}
+            </div>
+          </div>
+
+          <h3>Compose</h3>
 
           <div className="gmail-form">
             <input
@@ -738,18 +844,6 @@ export function App() {
           </div>
 
           <p className="gmail-status">{gmailStatusText}</p>
-
-          <div className="gmail-classified-list">
-            {gmailClassified.slice(0, 6).map((item) => (
-              <div key={item.id} className="gmail-classified-item">
-                <header>
-                  <strong>{item.category}</strong>
-                  <span>{item.from || "Unknown sender"}</span>
-                </header>
-                <p>{item.subject}</p>
-              </div>
-            ))}
-          </div>
 
           <h3>Suggested Replies</h3>
           <div className="plain-list replies">

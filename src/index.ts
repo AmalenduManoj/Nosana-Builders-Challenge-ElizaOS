@@ -477,26 +477,362 @@ const getHeaderValue = (headers: GmailHeader[] | undefined, name: string): strin
   return hit?.value || "";
 };
 
-const classifyGmailMessage = (subject: string, snippet: string, from: string): "Interview" | "Urgent" | "Finance" | "Work" | "Personal" | "Other" => {
-  const blob = `${subject} ${snippet} ${from}`.toLowerCase();
+type GmailCategory = "Interview" | "Urgent" | "Finance" | "Work" | "Personal" | "Other";
 
-  if (/(interview|recruiter|hiring|job\s+application|application\s+status|technical\s+round|hr\s+round|job\s+opening|position|role|candidate|resume|linkedin|linkedin\s+jobs|hiring\s+team)/.test(blob)) {
-    return "Interview";
+type GmailClassification = {
+  category: GmailCategory;
+  confidence: number;
+  reasons: string[];
+};
+
+type UnreadMessageDetail = {
+  id?: string;
+  threadId?: string;
+  from: string;
+  subject: string;
+  date: string;
+  snippet: string;
+  category: GmailCategory;
+  confidence: number;
+  reasons: string[];
+  isInterview: boolean;
+  receivedAt?: number;
+  hasMeetingSignals: boolean;
+};
+
+const getSenderDomain = (from: string): string => {
+  const address = extractEmailAddress(from || "");
+  if (!address || !address.includes("@")) {
+    return "";
   }
-  if (/(urgent|asap|immediate|today|action required|deadline)/.test(blob)) {
-    return "Urgent";
-  }
-  if (/(invoice|payment|bank|statement|salary|refund|upi|credit|debit|transaction)/.test(blob)) {
-    return "Finance";
-  }
-  if (/(project|meeting|sprint|client|release|ticket|task|team|manager)/.test(blob)) {
-    return "Work";
-  }
-  if (/(family|friend|birthday|travel|personal|home)/.test(blob)) {
-    return "Personal";
+  const domain = address.split("@")[1] || "";
+  return domain.toLowerCase();
+};
+
+const classifyGmailMessage = (subject: string, snippet: string, from: string): GmailClassification => {
+  const subjectBlob = (subject || "").toLowerCase();
+  const snippetBlob = (snippet || "").toLowerCase();
+  const fromBlob = (from || "").toLowerCase();
+  const combined = `${subjectBlob} ${snippetBlob} ${fromBlob}`;
+  const senderDomain = getSenderDomain(from);
+
+  const scores: Record<Exclude<GmailCategory, "Other">, number> = {
+    Interview: 0,
+    Urgent: 0,
+    Finance: 0,
+    Work: 0,
+    Personal: 0,
+  };
+
+  const reasons: string[] = [];
+
+  const addIfMatch = (
+    category: Exclude<GmailCategory, "Other">,
+    condition: boolean,
+    points: number,
+    reason: string
+  ): void => {
+    if (condition) {
+      scores[category] += points;
+      reasons.push(reason);
+    }
+  };
+
+  addIfMatch(
+    "Interview",
+    /(linkedin\.com|greenhouse\.io|lever\.co|ashbyhq\.com|workday\.com|naukri\.com|indeed\.com)/.test(senderDomain),
+    5,
+    "sender domain suggests recruiting"
+  );
+  addIfMatch(
+    "Interview",
+    /(interview|technical\s+round|hr\s+round|hiring\s+team|job\s+application|application\s+status|assessment|coding\s+challenge|recruiter)/.test(subjectBlob),
+    6,
+    "subject contains interview keywords"
+  );
+  addIfMatch(
+    "Interview",
+    /(job\s+application|position|role|candidate|resume|cv|hiring)/.test(snippetBlob),
+    3,
+    "snippet contains hiring context"
+  );
+
+  addIfMatch(
+    "Urgent",
+    /(urgent|asap|immediate|today|action\s+required|deadline|expires\s+today)/.test(subjectBlob),
+    6,
+    "subject contains urgent wording"
+  );
+  addIfMatch(
+    "Urgent",
+    /(urgent|asap|immediately|high\s+priority|deadline)/.test(snippetBlob),
+    3,
+    "snippet contains urgency signals"
+  );
+
+  addIfMatch(
+    "Finance",
+    /(invoice|payment|bank|statement|salary|refund|upi|credit|debit|transaction|subscription\s+renewal|bill)/.test(subjectBlob),
+    6,
+    "subject contains finance terms"
+  );
+  addIfMatch(
+    "Finance",
+    /(stripe|razorpay|paypal|visa|mastercard|hdfc|icici|sbi|axisbank|noreply@bank)/.test(combined),
+    4,
+    "content references payment providers or bank entities"
+  );
+
+  addIfMatch(
+    "Work",
+    /(project|meeting|sprint|client|release|ticket|task|team|manager|standup|jira|slack)/.test(subjectBlob),
+    5,
+    "subject contains work planning terms"
+  );
+  addIfMatch(
+    "Work",
+    /(roadmap|deliverable|milestone|sync|follow-up)/.test(snippetBlob),
+    2,
+    "snippet contains delivery coordination"
+  );
+
+  addIfMatch(
+    "Personal",
+    /(family|friend|birthday|travel|personal|home|wedding|vacation)/.test(subjectBlob),
+    4,
+    "subject contains personal-life terms"
+  );
+  addIfMatch(
+    "Personal",
+    /(family|mom|dad|buddy|trip|holiday)/.test(snippetBlob),
+    2,
+    "snippet contains personal context"
+  );
+
+  const ranked = (Object.entries(scores) as Array<[Exclude<GmailCategory, "Other">, number]>).sort((a, b) => {
+    if (b[1] !== a[1]) {
+      return b[1] - a[1];
+    }
+
+    const tieBreak: Record<Exclude<GmailCategory, "Other">, number> = {
+      Interview: 5,
+      Urgent: 4,
+      Finance: 3,
+      Work: 2,
+      Personal: 1,
+    };
+
+    return tieBreak[b[0]] - tieBreak[a[0]];
+  });
+
+  const [bestCategory, bestScore] = ranked[0];
+  const secondBestScore = ranked[1]?.[1] ?? 0;
+
+  if (bestScore < 4) {
+    return {
+      category: "Other",
+      confidence: 30,
+      reasons: reasons.slice(0, 2),
+    };
   }
 
-  return "Other";
+  const margin = Math.max(bestScore - secondBestScore, 0);
+  const confidence = Math.min(96, 58 + bestScore * 4 + margin * 6);
+
+  return {
+    category: bestCategory,
+    confidence,
+    reasons: reasons.filter((reason) => {
+      if (bestCategory === "Interview") return reason.includes("interview") || reason.includes("recruiting") || reason.includes("hiring");
+      if (bestCategory === "Urgent") return reason.includes("urgent") || reason.includes("urgency");
+      if (bestCategory === "Finance") return reason.includes("finance") || reason.includes("payment") || reason.includes("bank");
+      if (bestCategory === "Work") return reason.includes("work") || reason.includes("delivery");
+      return reason.includes("personal");
+    }).slice(0, 3),
+  };
+};
+
+const hasMeetingSignals = (subject: string, snippet: string): boolean => {
+  const blob = `${subject} ${snippet}`.toLowerCase();
+  return /(meeting|sync|call|standup|interview|zoom|google\s+meet|teams|webex|calendar\s+invite|invite|schedule)/.test(blob);
+};
+
+const extractMeetingWhenText = (subject: string, snippet: string): string | undefined => {
+  const blob = `${subject} ${snippet}`;
+
+  const todayOrTomorrow = blob.match(/\b(today|tomorrow)\b[^\n,.]{0,40}\b(\d{1,2}(?::\d{2})?\s?(?:am|pm))\b/i);
+  if (todayOrTomorrow) {
+    return `${todayOrTomorrow[1]} at ${todayOrTomorrow[2]}`;
+  }
+
+  const weekdayWithTime = blob.match(
+    /\b(mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b[^\n,.]{0,40}\b(\d{1,2}(?::\d{2})?\s?(?:am|pm))\b/i
+  );
+  if (weekdayWithTime) {
+    return `${weekdayWithTime[1]} at ${weekdayWithTime[2]}`;
+  }
+
+  const timeOnly = blob.match(/\b(\d{1,2}(?::\d{2})?\s?(?:am|pm))\b/i);
+  if (timeOnly) {
+    return `today at ${timeOnly[1]}`;
+  }
+
+  return undefined;
+};
+
+const cleanupMeetingTitle = (subject: string): string => {
+  const normalized = (subject || "Meeting")
+    .replace(/^(re|fwd?)\s*:\s*/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized || "Meeting";
+};
+
+const buildQuickAddTextForMeeting = (item: UnreadMessageDetail): string | undefined => {
+  const when = extractMeetingWhenText(item.subject, item.snippet);
+  if (!when) {
+    return undefined;
+  }
+  const title = cleanupMeetingTitle(item.subject);
+  return `${title} ${when}`;
+};
+
+const googleApiRequest = async <T>(
+  url: string,
+  method: "GET" | "POST" | "PATCH" = "GET",
+  body?: unknown
+): Promise<T> => {
+  const makeRequest = async (token: string) =>
+    fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+  let response = await makeRequest(await resolveGmailAccessToken());
+
+  if (response.status === 401 && hasGmailRefreshConfig()) {
+    const refreshed = await refreshGmailAccessToken();
+    response = await makeRequest(refreshed);
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Google API ${response.status}: ${text}`);
+  }
+
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  return (await response.json()) as T;
+};
+
+const calendarRequest = async <T>(
+  path: string,
+  method: "GET" | "POST" | "PATCH" = "GET",
+  body?: unknown
+): Promise<T> => {
+  const base = "https://www.googleapis.com/calendar/v3";
+  return googleApiRequest<T>(`${base}${path}`, method, body);
+};
+
+const fetchUnreadMessageDetails = async (
+  maxResults: number
+): Promise<{ unreadCountEstimate: number; items: UnreadMessageDetail[] }> => {
+  const list = await gmailRequest<{
+    resultSizeEstimate?: number;
+    messages?: Array<{ id?: string; threadId?: string }>;
+  }>(`/messages?q=is:unread&maxResults=${maxResults}`);
+
+  const messageRefs = (list.messages || []).filter((msg) => Boolean(msg.id));
+
+  const items = await Promise.all(
+    messageRefs.map(async (msg) => {
+      const data = await gmailRequest<{
+        id?: string;
+        snippet?: string;
+        internalDate?: string;
+        payload?: { headers?: GmailHeader[] };
+      }>(`/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`);
+
+      const from = getHeaderValue(data.payload?.headers, "From");
+      const subject = getHeaderValue(data.payload?.headers, "Subject") || "(no subject)";
+      const date = getHeaderValue(data.payload?.headers, "Date");
+      const snippet = data.snippet || "";
+      const classification = classifyGmailMessage(subject, snippet, from);
+
+      return {
+        id: data.id || msg.id,
+        threadId: msg.threadId,
+        from,
+        subject,
+        date,
+        snippet,
+        category: classification.category,
+        confidence: classification.confidence,
+        reasons: classification.reasons,
+        isInterview: classification.category === "Interview",
+        receivedAt: data.internalDate ? Number(data.internalDate) : undefined,
+        hasMeetingSignals: hasMeetingSignals(subject, snippet),
+      } as UnreadMessageDetail;
+    })
+  );
+
+  return {
+    unreadCountEstimate: list.resultSizeEstimate || 0,
+    items,
+  };
+};
+
+const buildInboxNarrativeSummary = (items: UnreadMessageDetail[]): { summary: string; actionItems: string[] } => {
+  if (items.length === 0) {
+    return {
+      summary: "No unread emails right now.",
+      actionItems: ["Inbox is clear. Check again later."],
+    };
+  }
+
+  const counts = items.reduce<Record<string, number>>((acc, item) => {
+    acc[item.category] = (acc[item.category] || 0) + 1;
+    return acc;
+  }, {});
+
+  const ordered = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([category, count]) => `${category}: ${count}`)
+    .join(", ");
+
+  const actionItems: string[] = [];
+  const urgentCount = counts.Urgent || 0;
+  const interviewCount = counts.Interview || 0;
+  const financeCount = counts.Finance || 0;
+  const meetingCount = items.filter((item) => item.hasMeetingSignals).length;
+
+  if (urgentCount > 0) {
+    actionItems.push(`Respond to ${urgentCount} urgent email${urgentCount > 1 ? "s" : ""} first.`);
+  }
+  if (interviewCount > 0) {
+    actionItems.push(`Review ${interviewCount} interview-related thread${interviewCount > 1 ? "s" : ""}.`);
+  }
+  if (financeCount > 0) {
+    actionItems.push(`Check ${financeCount} finance/payment message${financeCount > 1 ? "s" : ""}.`);
+  }
+  if (meetingCount > 0) {
+    actionItems.push(`There are ${meetingCount} meeting-like email${meetingCount > 1 ? "s" : ""} ready for calendar sync.`);
+  }
+
+  if (actionItems.length === 0) {
+    actionItems.push("Triage top unread messages by sender and date.");
+  }
+
+  return {
+    summary: `You have ${items.length} analyzed unread emails. Category mix: ${ordered}.`,
+    actionItems,
+  };
 };
 
 const parseAssistantCommand = (prompt: string): AssistantCommand => {
@@ -1176,41 +1512,7 @@ const routes: Route[] = [
         const max = Number.parseInt(typeof req.query?.maxResults === "string" ? req.query.maxResults : "10", 10);
         const maxResults = Number.isFinite(max) ? Math.min(Math.max(max, 1), 15) : 10;
 
-        const list = await gmailRequest<{
-          resultSizeEstimate?: number;
-          messages?: Array<{ id?: string; threadId?: string }>;
-        }>(`/messages?q=is:unread&maxResults=${maxResults}`);
-
-        const messageRefs = (list.messages || []).filter((msg) => Boolean(msg.id));
-
-        const details = await Promise.all(
-          messageRefs.map(async (msg) => {
-            const data = await gmailRequest<{
-              id?: string;
-              snippet?: string;
-              internalDate?: string;
-              payload?: { headers?: GmailHeader[] };
-            }>(`/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`);
-
-            const from = getHeaderValue(data.payload?.headers, "From");
-            const subject = getHeaderValue(data.payload?.headers, "Subject") || "(no subject)";
-            const date = getHeaderValue(data.payload?.headers, "Date");
-            const snippet = data.snippet || "";
-            const category = classifyGmailMessage(subject, snippet, from);
-
-            return {
-              id: data.id || msg.id,
-              threadId: msg.threadId,
-              from,
-              subject,
-              date,
-              snippet,
-              category,
-              isInterview: category === "Interview",
-              receivedAt: data.internalDate ? Number(data.internalDate) : undefined,
-            };
-          })
-        );
+        const { unreadCountEstimate, items: details } = await fetchUnreadMessageDetails(maxResults);
 
         const counts = details.reduce<Record<string, number>>((acc, item) => {
           acc[item.category] = (acc[item.category] || 0) + 1;
@@ -1220,7 +1522,7 @@ const routes: Route[] = [
         sendJson(res, 200, {
           success: true,
           data: {
-            unreadCountEstimate: list.resultSizeEstimate || 0,
+            unreadCountEstimate,
             categories: counts,
             interviewCount: counts.Interview || 0,
             items: details,
@@ -1231,6 +1533,133 @@ const routes: Route[] = [
         sendJson(res, 400, {
           success: false,
           error: error instanceof Error ? error.message : "Unable to classify latest unread emails",
+        });
+      }
+    },
+  },
+  {
+    type: "GET",
+    path: "/gmail/summary",
+    public: true,
+    handler: async (req, res) => {
+      try {
+        const max = Number.parseInt(typeof req.query?.maxResults === "string" ? req.query.maxResults : "12", 10);
+        const maxResults = Number.isFinite(max) ? Math.min(Math.max(max, 1), 20) : 12;
+
+        const { unreadCountEstimate, items } = await fetchUnreadMessageDetails(maxResults);
+        const counts = items.reduce<Record<string, number>>((acc, item) => {
+          acc[item.category] = (acc[item.category] || 0) + 1;
+          return acc;
+        }, {});
+
+        const meetingCandidates = items.filter((item) => item.hasMeetingSignals);
+        const summaryData = buildInboxNarrativeSummary(items);
+
+        sendJson(res, 200, {
+          success: true,
+          data: {
+            unreadCountEstimate,
+            totalAnalyzed: items.length,
+            categoryCounts: counts,
+            meetingCandidates: meetingCandidates.length,
+            summary: summaryData.summary,
+            actionItems: summaryData.actionItems,
+            items,
+            generatedAt: now(),
+          },
+        });
+      } catch (error) {
+        sendJson(res, 400, {
+          success: false,
+          error: error instanceof Error ? error.message : "Unable to summarize inbox",
+        });
+      }
+    },
+  },
+  {
+    type: "POST",
+    path: "/gmail/sync-meetings",
+    public: true,
+    handler: async (req, res) => {
+      try {
+        const body = parseJsonBody(req.body);
+        const max = Number.parseInt(
+          typeof body.maxResults === "number"
+            ? String(body.maxResults)
+            : typeof req.query?.maxResults === "string"
+              ? req.query.maxResults
+              : "15",
+          10
+        );
+        const maxResults = Number.isFinite(max) ? Math.min(Math.max(max, 1), 25) : 15;
+
+        const { items } = await fetchUnreadMessageDetails(maxResults);
+        const candidates = items.filter((item) => item.hasMeetingSignals);
+
+        const added: Array<{ id: string; subject: string; eventId?: string; eventLink?: string }> = [];
+        const skipped: Array<{ id: string; subject: string; reason: string }> = [];
+        const failed: Array<{ id: string; subject: string; reason: string }> = [];
+
+        for (const candidate of candidates) {
+          const quickAddText = buildQuickAddTextForMeeting(candidate);
+          if (!quickAddText) {
+            skipped.push({
+              id: candidate.id || randomUuid(),
+              subject: candidate.subject,
+              reason: "No recognizable date/time in email snippet",
+            });
+            continue;
+          }
+
+          try {
+            const event = await calendarRequest<{ id?: string; htmlLink?: string }>(
+              `/calendars/primary/events/quickAdd?text=${encodeURIComponent(quickAddText)}`,
+              "POST"
+            );
+
+            if (event.id) {
+              await calendarRequest(`/calendars/primary/events/${event.id}`, "PATCH", {
+                reminders: {
+                  useDefault: false,
+                  overrides: [
+                    { method: "email", minutes: 30 },
+                    { method: "popup", minutes: 10 },
+                  ],
+                },
+              });
+            }
+
+            added.push({
+              id: candidate.id || randomUuid(),
+              subject: candidate.subject,
+              eventId: event.id,
+              eventLink: event.htmlLink,
+            });
+          } catch (error) {
+            failed.push({
+              id: candidate.id || randomUuid(),
+              subject: candidate.subject,
+              reason: error instanceof Error ? error.message : "Calendar sync failed",
+            });
+          }
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          data: {
+            analyzed: items.length,
+            meetingCandidates: candidates.length,
+            added,
+            skipped,
+            failed,
+            reminderPolicy: "Email 30m + popup 10m",
+            generatedAt: now(),
+          },
+        });
+      } catch (error) {
+        sendJson(res, 400, {
+          success: false,
+          error: error instanceof Error ? error.message : "Unable to sync meetings to Google Calendar",
         });
       }
     },
