@@ -87,7 +87,15 @@ type ModuleState = {
     productivityInsight: string;
   };
   tasks: Array<{ id: string; title: string; status: "todo" | "doing" | "done"; priority: 1 | 2 | 3 }>;
-  habits: Array<{ id: string; name: string; streak: number; confidence: number; heatmap: number[] }>;
+  habits: Array<{
+    id: string;
+    name: string;
+    streak: number;
+    confidence: number;
+    heatmap: number[];
+    checkInDays?: string[];
+    lastCheckInDate?: string;
+  }>;
   emails: Array<{ id: string; category: "Work" | "Personal" | "Urgent"; summary: string; suggestedReply: string }>;
   blogs: Array<{ id: string; title: string; summary: string; body: string; tags: string[]; createdAt: number }>;
   notifications: string[];
@@ -162,6 +170,12 @@ const formatTime = (timestamp: number): string =>
     minute: "2-digit",
   }).format(new Date(timestamp));
 
+const getDateKeyWithOffset = (offsetDays: number): string => {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+};
+
 const bubbleIntro = {
   hidden: { opacity: 0, y: 16 },
   visible: { opacity: 1, y: 0 },
@@ -228,6 +242,8 @@ export function App() {
   const [meetingSyncStatus, setMeetingSyncStatus] = useState("No calendar sync yet.");
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getThemePreference());
+  const [habitActionText, setHabitActionText] = useState("No habit check-ins yet.");
+  const [habitBusyId, setHabitBusyId] = useState<string | null>(null);
 
   const canSend = input.trim().length > 0 && !isLoading;
 
@@ -515,6 +531,7 @@ export function App() {
       <section className="grid two-col">
         <article className="card">
           <h3>Streaks and Predictive Insights</h3>
+          <p className="gmail-status">{habitActionText}</p>
           <div className="habit-cards">
             {moduleState.habits.map((habit) => (
               <div key={habit.id} className="habit-card">
@@ -524,6 +541,87 @@ export function App() {
                   <div className="progress-fill alt" style={{ width: `${habit.confidence}%` }} />
                 </div>
                 <small>{habit.confidence}% likelihood of keeping streak tomorrow</small>
+                <div className="habit-actions">
+                  <button
+                    type="button"
+                    className="gmail-action-btn"
+                    disabled={habitBusyId === habit.id}
+                    onClick={async () => {
+                      setHabitBusyId(habit.id);
+                      try {
+                        const response = await fetch(`${API_BASE}/api/taskforge/habits/checkin`, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            userId,
+                            habitId: habit.id,
+                            date: getDateKeyWithOffset(0),
+                          }),
+                        });
+
+                        const json = await response.json();
+                        if (!response.ok) {
+                          throw new Error(json?.error || "Unable to check in habit");
+                        }
+
+                        setHabitActionText(`Checked in ${habit.name} for today.`);
+
+                        const nextModuleState = await hydrateModuleState(API_BASE, userId);
+                        if (nextModuleState) {
+                          setModuleState(nextModuleState);
+                        }
+                      } catch (error) {
+                        setHabitActionText(error instanceof Error ? error.message : "Habit check-in failed");
+                      } finally {
+                        setHabitBusyId(null);
+                      }
+                    }}
+                  >
+                    Check in today
+                  </button>
+
+                  <button
+                    type="button"
+                    className="gmail-action-btn"
+                    disabled={habitBusyId === habit.id}
+                    onClick={async () => {
+                      setHabitBusyId(habit.id);
+                      try {
+                        const response = await fetch(`${API_BASE}/api/taskforge/habits/checkin`, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            userId,
+                            habitId: habit.id,
+                            date: getDateKeyWithOffset(-1),
+                          }),
+                        });
+
+                        const json = await response.json();
+                        if (!response.ok) {
+                          throw new Error(json?.error || "Unable to mark yesterday");
+                        }
+
+                        setHabitActionText(`Marked yesterday for ${habit.name}.`);
+
+                        const nextModuleState = await hydrateModuleState(API_BASE, userId);
+                        if (nextModuleState) {
+                          setModuleState(nextModuleState);
+                        }
+                      } catch (error) {
+                        setHabitActionText(error instanceof Error ? error.message : "Yesterday check-in failed");
+                      } finally {
+                        setHabitBusyId(null);
+                      }
+                    }}
+                  >
+                    Mark yesterday
+                  </button>
+                </div>
               </div>
             ))}
           </div>

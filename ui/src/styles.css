@@ -400,6 +400,18 @@ body {
   color: var(--muted);
 }
 
+.habit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.38rem;
+  margin-top: 0.28rem;
+}
+
+.habit-actions .gmail-action-btn {
+  padding: 0.38rem 0.46rem;
+  font-size: 0.72rem;
+}
+
 .heatmap {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));

@@ -53,6 +53,8 @@ type HabitItem = {
   streak: number;
   confidence: number;
   heatmap: number[];
+  checkInDays?: string[];
+  lastCheckInDate?: string;
   updatedAt: number;
 };
 
@@ -1145,6 +1147,64 @@ const getDayKey = (dateMs: number = Date.now()): string => {
   return new Date(dateMs).toISOString().slice(0, 10);
 };
 
+const isDateKey = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const parseDayNumber = (dateKey: string): number => {
+  const [year, month, day] = dateKey.split("-").map((part) => Number.parseInt(part, 10));
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+};
+
+const buildHeatmapFromCheckins = (checkInDays: string[], length: number = 35): number[] => {
+  const set = new Set(checkInDays.filter(isDateKey));
+  const todayDay = parseDayNumber(getDayKey());
+  const start = todayDay - (length - 1);
+
+  return Array.from({ length }, (_, idx) => {
+    const dayNum = start + idx;
+    const dateKey = getDayKey(dayNum * 86_400_000);
+    return set.has(dateKey) ? 1 : 0;
+  });
+};
+
+const computeHabitStreak = (checkInDays: string[]): number => {
+  const uniqueDays = Array.from(new Set(checkInDays.filter(isDateKey))).map(parseDayNumber);
+  if (uniqueDays.length === 0) {
+    return 0;
+  }
+
+  const sorted = uniqueDays.sort((a, b) => b - a);
+  let streak = 1;
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    if (sorted[i - 1] - sorted[i] === 1) {
+      streak += 1;
+      continue;
+    }
+    break;
+  }
+
+  return streak;
+};
+
+const computeHabitConfidence = (checkInDays: string[], lookbackDays: number = 14): number => {
+  if (lookbackDays <= 0) {
+    return 0;
+  }
+
+  const set = new Set(checkInDays.filter(isDateKey));
+  const today = parseDayNumber(getDayKey());
+  let hits = 0;
+
+  for (let i = 0; i < lookbackDays; i += 1) {
+    const dateKey = getDayKey((today - i) * 86_400_000);
+    if (set.has(dateKey)) {
+      hits += 1;
+    }
+  }
+
+  return Math.round((hits / lookbackDays) * 100);
+};
+
 const buildDailyBlogPost = (input: {
   dashboard: DashboardPayload;
   tasks: TaskItem[];
@@ -1946,6 +2006,69 @@ const routes: Route[] = [
     },
   },
   {
+    type: "POST",
+    path: "/habits/checkin",
+    public: true,
+    handler: async (req, res, runtime) => {
+      const body = parseJsonBody(req.body);
+      const userKey = getUserKeyFromRequest(req.query, body);
+      const habitId = typeof body.habitId === "string" ? body.habitId.trim() : "";
+      const requestedDate = typeof body.date === "string" ? body.date.trim() : "";
+      const targetDate = requestedDate && isDateKey(requestedDate) ? requestedDate : getDayKey();
+
+      if (!habitId) {
+        return sendJson(res, 400, { success: false, error: "habitId is required" });
+      }
+
+      const ctx = await ensureUserContext(runtime, userKey);
+      const { habitsComponent } = await getModuleData(runtime, ctx);
+      const habitsData = asHabits(habitsComponent);
+
+      const index = habitsData.items.findIndex((item) => item.id === habitId);
+      if (index < 0) {
+        return sendJson(res, 404, { success: false, error: "Habit not found" });
+      }
+
+      const habit = habitsData.items[index];
+      const checkInSet = new Set((habit.checkInDays || []).filter(isDateKey));
+      checkInSet.add(targetDate);
+
+      const sortedRecent = Array.from(checkInSet)
+        .sort((a, b) => parseDayNumber(b) - parseDayNumber(a))
+        .slice(0, 365);
+
+      const updatedHabit: HabitItem = {
+        ...habit,
+        checkInDays: sortedRecent,
+        lastCheckInDate: targetDate,
+        streak: computeHabitStreak(sortedRecent),
+        confidence: computeHabitConfidence(sortedRecent),
+        heatmap: buildHeatmapFromCheckins(sortedRecent),
+        updatedAt: now(),
+      };
+
+      const nextItems = [...habitsData.items];
+      nextItems[index] = updatedHabit;
+
+      const nextHabits = {
+        generatedAt: now(),
+        items: nextItems,
+      };
+
+      await updateComponentData(runtime, habitsComponent, nextHabits);
+      patchSnapshotForUser(userKey, { habits: nextHabits });
+
+      sendJson(res, 200, {
+        success: true,
+        data: {
+          habit: updatedHabit,
+          checkedDate: targetDate,
+          habits: nextHabits,
+        },
+      });
+    },
+  },
+  {
     type: "GET",
     path: "/blog",
     public: true,
@@ -2080,6 +2203,8 @@ const routes: Route[] = [
             streak: 0,
             confidence: 70,
             heatmap: Array.from({ length: 35 }, () => 0),
+            checkInDays: [],
+            lastCheckInDate: undefined,
             updatedAt: now(),
           };
 
