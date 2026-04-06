@@ -72,6 +72,16 @@ type FinanceItem = {
   timestamp: number;
 };
 
+type BlogItem = {
+  id: string;
+  title: string;
+  dateKey: string;
+  summary: string;
+  body: string;
+  tags: string[];
+  createdAt: number;
+};
+
 type NotificationItem = {
   id: string;
   message: string;
@@ -94,6 +104,7 @@ type ModuleSnapshot = {
   emails: { items: EmailItem[]; generatedAt: number };
   tasks: { items: TaskItem[]; generatedAt: number };
   habits: { items: HabitItem[]; generatedAt: number };
+  blogs: { items: BlogItem[]; generatedAt: number };
   knowledge: { items: NoteItem[]; generatedAt: number };
   finance: { items: FinanceItem[]; generatedAt: number };
   notifications: { items: NotificationItem[]; generatedAt: number };
@@ -106,6 +117,7 @@ const COMPONENT_TYPES = {
   EMAIL: "taskforge.email",
   TASKS: "taskforge.tasks",
   HABITS: "taskforge.habits",
+  BLOGS: "taskforge.blogs",
   KNOWLEDGE: "taskforge.knowledge",
   FINANCE: "taskforge.finance",
   NOTIFICATIONS: "taskforge.notifications",
@@ -280,6 +292,11 @@ const defaultHabits = (): { items: HabitItem[]; generatedAt: number } => ({
   items: [],
 });
 
+const defaultBlogs = (): { items: BlogItem[]; generatedAt: number } => ({
+  generatedAt: now(),
+  items: [],
+});
+
 const defaultKnowledge = (): { items: NoteItem[]; generatedAt: number } => ({
   generatedAt: now(),
   items: [],
@@ -300,6 +317,7 @@ const createEmptySnapshot = (): ModuleSnapshot => ({
   emails: defaultEmails(),
   tasks: defaultTasks(),
   habits: defaultHabits(),
+  blogs: defaultBlogs(),
   knowledge: defaultKnowledge(),
   finance: defaultFinance(),
   notifications: defaultNotifications(),
@@ -321,6 +339,7 @@ const createSnapshotFromComponents = (components: {
   emailComponent: Component;
   tasksComponent: Component;
   habitsComponent: Component;
+  blogsComponent: Component;
   knowledgeComponent: Component;
   financeComponent: Component;
   notificationsComponent: Component;
@@ -330,6 +349,7 @@ const createSnapshotFromComponents = (components: {
     emails: mergeWithDefault(components.emailComponent.data, defaultEmails()),
     tasks: mergeWithDefault(components.tasksComponent.data, defaultTasks()),
     habits: mergeWithDefault(components.habitsComponent.data, defaultHabits()),
+    blogs: mergeWithDefault(components.blogsComponent.data, defaultBlogs()),
     knowledge: mergeWithDefault(components.knowledgeComponent.data, defaultKnowledge()),
     finance: mergeWithDefault(components.financeComponent.data, defaultFinance()),
     notifications: mergeWithDefault(components.notificationsComponent.data, defaultNotifications()),
@@ -1040,6 +1060,7 @@ const getModuleData = async (runtime: IAgentRuntime, ctx: UserContext) => {
   const emailComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.EMAIL, defaultEmails);
   const tasksComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.TASKS, defaultTasks);
   const habitsComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.HABITS, defaultHabits);
+  const blogsComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.BLOGS, defaultBlogs);
   const knowledgeComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.KNOWLEDGE, defaultKnowledge);
   const financeComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.FINANCE, defaultFinance);
   const notificationsComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.NOTIFICATIONS, defaultNotifications);
@@ -1051,6 +1072,7 @@ const getModuleData = async (runtime: IAgentRuntime, ctx: UserContext) => {
       emailComponent,
       tasksComponent,
       habitsComponent,
+      blogsComponent,
       knowledgeComponent,
       financeComponent,
       notificationsComponent,
@@ -1060,6 +1082,7 @@ const getModuleData = async (runtime: IAgentRuntime, ctx: UserContext) => {
   emailComponent.data = snapshot.emails as unknown as Record<string, unknown>;
   tasksComponent.data = snapshot.tasks as unknown as Record<string, unknown>;
   habitsComponent.data = snapshot.habits as unknown as Record<string, unknown>;
+  blogsComponent.data = snapshot.blogs as unknown as Record<string, unknown>;
   knowledgeComponent.data = snapshot.knowledge as unknown as Record<string, unknown>;
   financeComponent.data = snapshot.finance as unknown as Record<string, unknown>;
   notificationsComponent.data = snapshot.notifications as unknown as Record<string, unknown>;
@@ -1069,6 +1092,7 @@ const getModuleData = async (runtime: IAgentRuntime, ctx: UserContext) => {
     emailComponent,
     tasksComponent,
     habitsComponent,
+    blogsComponent,
     knowledgeComponent,
     financeComponent,
     notificationsComponent,
@@ -1079,6 +1103,7 @@ const asDashboard = (component: Component): DashboardPayload => component.data a
 const asEmails = (component: Component): { items: EmailItem[]; generatedAt: number } => component.data as unknown as { items: EmailItem[]; generatedAt: number };
 const asTasks = (component: Component): { items: TaskItem[]; generatedAt: number } => component.data as unknown as { items: TaskItem[]; generatedAt: number };
 const asHabits = (component: Component): { items: HabitItem[]; generatedAt: number } => component.data as unknown as { items: HabitItem[]; generatedAt: number };
+const asBlogs = (component: Component): { items: BlogItem[]; generatedAt: number } => component.data as unknown as { items: BlogItem[]; generatedAt: number };
 const asKnowledge = (component: Component): { items: NoteItem[]; generatedAt: number } => component.data as unknown as { items: NoteItem[]; generatedAt: number };
 const asFinance = (component: Component): { items: FinanceItem[]; generatedAt: number } => component.data as unknown as { items: FinanceItem[]; generatedAt: number };
 const asNotifications = (component: Component): { items: NotificationItem[]; generatedAt: number } => component.data as unknown as { items: NotificationItem[]; generatedAt: number };
@@ -1114,6 +1139,61 @@ const getSuggestions = (dashboard: DashboardPayload, tasks: TaskItem[], habits: 
   }
 
   return suggestions;
+};
+
+const getDayKey = (dateMs: number = Date.now()): string => {
+  return new Date(dateMs).toISOString().slice(0, 10);
+};
+
+const buildDailyBlogPost = (input: {
+  dashboard: DashboardPayload;
+  tasks: TaskItem[];
+  habits: HabitItem[];
+  emails: EmailItem[];
+  notifications: NotificationItem[];
+}): BlogItem => {
+  const dayKey = getDayKey();
+  const openTasks = input.tasks.filter((task) => task.status !== "done");
+  const doneTasks = input.tasks.filter((task) => task.status === "done");
+  const topPriority = input.dashboard.priorities[0] || openTasks[0]?.title || "No priority set yet";
+  const avgHabitConfidence =
+    input.habits.length > 0
+      ? Math.round(input.habits.reduce((sum, habit) => sum + habit.confidence, 0) / input.habits.length)
+      : 0;
+
+  const emailBuckets = input.emails.reduce<Record<string, number>>((acc, email) => {
+    acc[email.category] = (acc[email.category] || 0) + 1;
+    return acc;
+  }, {});
+
+  const emailPulse = Object.entries(emailBuckets)
+    .sort((a, b) => b[1] - a[1])
+    .map(([category, count]) => `${category} ${count}`)
+    .slice(0, 3)
+    .join(", ");
+
+  const recentNote = input.notifications[0]?.message || "No new notifications";
+  const summary = `Focus: ${topPriority}. Open tasks: ${openTasks.length}, completed: ${doneTasks.length}, habit confidence: ${avgHabitConfidence}%.`;
+
+  const body = [
+    `Today TaskForge tracked ${openTasks.length + doneTasks.length} tasks with ${doneTasks.length} marked complete.`,
+    `Primary direction from assistant planning is: ${topPriority}.`,
+    emailPulse
+      ? `Inbox signal summary from email automation: ${emailPulse}.`
+      : "Inbox signal summary: no categorized email data yet.",
+    `Habit system confidence is averaging ${avgHabitConfidence}% across active habits.`,
+    `System note: ${recentNote}.`,
+  ].join(" ");
+
+  return {
+    id: randomUuid(),
+    title: `TaskForge Daily Blog - ${dayKey}`,
+    dateKey: dayKey,
+    summary,
+    body,
+    tags: ["daily", "tasks", "email", "habits", "automation"],
+    createdAt: now(),
+  };
 };
 
 const checkModelStatus = async (): Promise<{ ok: boolean; status: string; detail?: string }> => {
@@ -1867,6 +1947,52 @@ const routes: Route[] = [
   },
   {
     type: "GET",
+    path: "/blog",
+    public: true,
+    handler: async (req, res, runtime) => {
+      const userKey = getUserKeyFromRequest(req.query);
+      const ctx = await ensureUserContext(runtime, userKey);
+      const { dashboardComponent, tasksComponent, habitsComponent, emailComponent, notificationsComponent, blogsComponent } =
+        await getModuleData(runtime, ctx);
+
+      const blogData = asBlogs(blogsComponent);
+      const todayKey = getDayKey();
+      const hasToday = blogData.items.some((item) => item.dateKey === todayKey);
+
+      if (hasToday) {
+        return sendJson(res, 200, {
+          success: true,
+          data: {
+            ...blogData,
+            generatedAt: now(),
+          },
+        });
+      }
+
+      const newPost = buildDailyBlogPost({
+        dashboard: asDashboard(dashboardComponent),
+        tasks: asTasks(tasksComponent).items,
+        habits: asHabits(habitsComponent).items,
+        emails: asEmails(emailComponent).items,
+        notifications: asNotifications(notificationsComponent).items,
+      });
+
+      const nextBlogData = {
+        generatedAt: now(),
+        items: [newPost, ...blogData.items].sort((a, b) => b.createdAt - a.createdAt),
+      };
+
+      await updateComponentData(runtime, blogsComponent, nextBlogData);
+      patchSnapshotForUser(userKey, { blogs: nextBlogData });
+
+      sendJson(res, 200, {
+        success: true,
+        data: nextBlogData,
+      });
+    },
+  },
+  {
+    type: "GET",
     path: "/knowledge",
     public: true,
     handler: async (req, res, runtime) => {
@@ -2241,6 +2367,7 @@ export const customPlugin: Plugin = {
     { name: COMPONENT_TYPES.EMAIL, schema: {} },
     { name: COMPONENT_TYPES.TASKS, schema: {} },
     { name: COMPONENT_TYPES.HABITS, schema: {} },
+    { name: COMPONENT_TYPES.BLOGS, schema: {} },
     { name: COMPONENT_TYPES.KNOWLEDGE, schema: {} },
     { name: COMPONENT_TYPES.FINANCE, schema: {} },
     { name: COMPONENT_TYPES.NOTIFICATIONS, schema: {} },

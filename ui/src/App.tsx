@@ -9,7 +9,7 @@ import type {
 } from "./types";
 
 const API_BASE = (import.meta.env.VITE_TASKFORGE_API_BASE as string | undefined)?.trim() || "http://127.0.0.1:3003";
-const NAV_ITEMS = ["Dashboard", "Tasks", "Habits", "Email", "Knowledge", "Finance", "AI Assistant"] as const;
+const NAV_ITEMS = ["Dashboard", "Tasks", "Habits", "Email", "Blog", "AI Assistant"] as const;
 type NavItem = (typeof NAV_ITEMS)[number];
 
 const QUICK_PROMPTS = [
@@ -89,9 +89,7 @@ type ModuleState = {
   tasks: Array<{ id: string; title: string; status: "todo" | "doing" | "done"; priority: 1 | 2 | 3 }>;
   habits: Array<{ id: string; name: string; streak: number; confidence: number; heatmap: number[] }>;
   emails: Array<{ id: string; category: "Work" | "Personal" | "Urgent"; summary: string; suggestedReply: string }>;
-  knowledge: Array<{ id: string; title: string; summary: string }>;
-  financeBars: Array<{ label: string; value: number }>;
-  financeInsight: string;
+  blogs: Array<{ id: string; title: string; summary: string; body: string; tags: string[]; createdAt: number }>;
   notifications: string[];
   suggestions: string[];
 };
@@ -123,9 +121,7 @@ const DEFAULT_MODULE_STATE: ModuleState = {
   tasks: [],
   habits: [],
   emails: [],
-  knowledge: [],
-  financeBars: [],
-  financeInsight: "",
+  blogs: [],
   notifications: [],
   suggestions: [],
 };
@@ -173,47 +169,31 @@ const bubbleIntro = {
 
 const hydrateModuleState = async (apiBase: string, userId: string): Promise<ModuleState | null> => {
   const userParam = encodeURIComponent(userId);
-  const [dashboardRes, emailRes, tasksRes, habitsRes, knowledgeRes, financeRes, notifRes] =
+  const [dashboardRes, emailRes, tasksRes, habitsRes, blogRes, notifRes] =
     await Promise.all([
       fetch(`${apiBase}/api/taskforge/dashboard?userId=${userParam}`),
       fetch(`${apiBase}/api/taskforge/email?userId=${userParam}`),
       fetch(`${apiBase}/api/taskforge/tasks?userId=${userParam}`),
       fetch(`${apiBase}/api/taskforge/habits?userId=${userParam}`),
-      fetch(`${apiBase}/api/taskforge/knowledge?userId=${userParam}`),
-      fetch(`${apiBase}/api/taskforge/finance?userId=${userParam}`),
+      fetch(`${apiBase}/api/taskforge/blog?userId=${userParam}`),
       fetch(`${apiBase}/api/taskforge/notifications?userId=${userParam}`),
     ]);
 
-  const [dashboardJson, emailJson, tasksJson, habitsJson, knowledgeJson, financeJson, notifJson] = await Promise.all([
+  const [dashboardJson, emailJson, tasksJson, habitsJson, blogJson, notifJson] = await Promise.all([
     dashboardRes.json(),
     emailRes.json(),
     tasksRes.json(),
     habitsRes.json(),
-    knowledgeRes.json(),
-    financeRes.json(),
+    blogRes.json(),
     notifRes.json(),
   ]);
-
-  const financeTotals = financeJson?.data?.categoryTotals || {};
-  const financeBars = Object.entries(financeTotals)
-    .map(([label, amount]) => ({ label, amount: Number(amount) || 0 }))
-    .sort((a, b) => b.amount - a.amount);
-  const maxAmount = financeBars[0]?.amount || 1;
 
   return {
     dashboard: dashboardJson?.data?.dashboard || DEFAULT_MODULE_STATE.dashboard,
     tasks: tasksJson?.data?.items || DEFAULT_MODULE_STATE.tasks,
     habits: habitsJson?.data?.items || DEFAULT_MODULE_STATE.habits,
     emails: emailJson?.data?.items || DEFAULT_MODULE_STATE.emails,
-    knowledge: knowledgeJson?.data?.items || DEFAULT_MODULE_STATE.knowledge,
-    financeBars:
-      financeBars.length > 0
-        ? financeBars.map((item) => ({
-            label: item.label,
-            value: Math.round((item.amount / maxAmount) * 100),
-          }))
-        : DEFAULT_MODULE_STATE.financeBars,
-    financeInsight: financeJson?.data?.insight || DEFAULT_MODULE_STATE.financeInsight,
+    blogs: blogJson?.data?.items || DEFAULT_MODULE_STATE.blogs,
     notifications: (notifJson?.data?.items || []).map((item: { message: string }) => item.message),
     suggestions: dashboardJson?.data?.suggestions || DEFAULT_MODULE_STATE.suggestions,
   };
@@ -237,7 +217,6 @@ export function App() {
   const [statusText, setStatusText] = useState("Booting...");
   const [modelStatus, setModelStatus] = useState("unknown");
   const [moduleState, setModuleState] = useState<ModuleState>(DEFAULT_MODULE_STATE);
-  const [searchNote, setSearchNote] = useState("");
   const [gmailTo, setGmailTo] = useState("test@example.com");
   const [gmailSubject, setGmailSubject] = useState("TaskForge follow-up");
   const [gmailBody, setGmailBody] = useState("Hi,\n\nQuick update from TaskForge.\n\nRegards,");
@@ -375,15 +354,6 @@ export function App() {
 
     return allStats.filter((item) => item.connected);
   }, [agent, modelStatus, moduleState.dashboard.priorities.length, moduleState.tasks]);
-
-  const filteredNotes = useMemo(() => {
-    if (!searchNote.trim()) {
-      return moduleState.knowledge;
-    }
-    return moduleState.knowledge.filter((note) =>
-      `${note.title} ${note.summary}`.toLowerCase().includes(searchNote.toLowerCase())
-    );
-  }, [moduleState.knowledge, searchNote]);
 
   const appendUserMessage = (text: string): ChatMessage => {
     const userMessage: ChatMessage = {
@@ -890,59 +860,28 @@ export function App() {
     );
   };
 
-  const renderKnowledge = () => {
+  const renderBlog = () => {
+    const posts = [...moduleState.blogs].sort((a, b) => b.createdAt - a.createdAt);
+
     return (
-      <section className="grid two-col">
+      <section className="grid single-col">
         <article className="card">
-          <h3>Personal Knowledge Base</h3>
-          <input
-            className="search-input"
-            placeholder="Semantic search notes..."
-            value={searchNote}
-            onChange={(event) => setSearchNote(event.target.value)}
-          />
+          <h3>Daily Blog</h3>
+          <p className="gmail-status">A new post is auto-generated every day from tasks, emails, habits, and assistant planning context.</p>
+
           <div className="notes-list">
-            {filteredNotes.map((note) => (
-              <div key={note.title} className="note-item">
-                <strong>{note.title}</strong>
-                <p>{note.summary}</p>
+            {posts.length === 0 && <p>No blog posts yet.</p>}
+            {posts.map((post) => (
+              <div key={post.id} className="note-item">
+                <strong>{post.title}</strong>
+                <p>{post.summary}</p>
+                <p>{post.body}</p>
+                {Array.isArray(post.tags) && post.tags.length > 0 && (
+                  <small>{post.tags.join(" • ")}</small>
+                )}
               </div>
             ))}
           </div>
-        </article>
-
-        <article className="card">
-          <h3>AI Summary Lens</h3>
-          <p>
-            {moduleState.suggestions[0] || "Semantic insight will appear after your module data is loaded."}
-          </p>
-        </article>
-      </section>
-    );
-  };
-
-  const renderFinance = () => {
-    return (
-      <section className="grid two-col">
-        <article className="card">
-          <h3>Expense Categories</h3>
-          <div className="bar-chart">
-            {moduleState.financeBars.map((bar) => (
-              <div key={bar.label} className="bar-row">
-                <span>{bar.label}</span>
-                <div className="bar-track">
-                  <div className="bar-fill" style={{ width: `${bar.value}%` }} />
-                </div>
-                <strong>{bar.value}%</strong>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="card">
-          <h3>Spending Insight</h3>
-          <div className="spend-donut" />
-          <p>{moduleState.financeInsight || "No spending insight yet."}</p>
         </article>
       </section>
     );
@@ -1045,10 +984,8 @@ export function App() {
         return renderHabits();
       case "Email":
         return renderEmail();
-      case "Knowledge":
-        return renderKnowledge();
-      case "Finance":
-        return renderFinance();
+      case "Blog":
+        return renderBlog();
       case "AI Assistant":
         return renderAssistant();
       default:

@@ -645,6 +645,13 @@ body {
   color: var(--muted);
 }
 
+.note-item small {
+  display: block;
+  margin-top: 0.36rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
 .search-input {
   width: 100%;
   background: #ffffff;

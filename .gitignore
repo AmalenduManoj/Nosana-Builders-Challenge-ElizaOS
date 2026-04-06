@@ -92,3 +92,11 @@ pnpm-lock.yaml
 bun.lockb
 /.eliza/.elizadb
 /dist
+
+# env files (never commit secrets)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
