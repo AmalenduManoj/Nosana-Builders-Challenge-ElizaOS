@@ -107,6 +107,8 @@ type InboxMailItem = {
   hasMeetingSignals?: boolean;
 };
 
+type ThemeMode = "light" | "dark";
+
 const getHeatValue = (index: number): number => {
   const wave = Math.sin(index / 3.2) * 0.5 + 0.5;
   return Number((0.2 + wave * 0.8).toFixed(2));
@@ -143,6 +145,19 @@ const getPersistentId = (key: string): string => {
   const value = generateId();
   localStorage.setItem(key, value);
   return value;
+};
+
+const getThemePreference = (): ThemeMode => {
+  const stored = localStorage.getItem("taskforge_theme_mode");
+  if (stored === "light" || stored === "dark") {
+    return stored;
+  }
+
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+
+  return "light";
 };
 
 const formatTime = (timestamp: number): string =>
@@ -233,6 +248,7 @@ export function App() {
   const [inboxActionItems, setInboxActionItems] = useState<string[]>([]);
   const [meetingSyncStatus, setMeetingSyncStatus] = useState("No calendar sync yet.");
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getThemePreference());
 
   const canSend = input.trim().length > 0 && !isLoading;
 
@@ -335,16 +351,30 @@ export function App() {
     };
   }, [userId]);
 
-  const stats = useMemo(
-    () => [
-      { label: "Agent", value: agent?.name || "Not Connected" },
-      { label: "Productivity", value: `${Math.min(moduleState.dashboard.priorities.length * 18 + 46, 95)}% focus score` },
-      { label: "Open Loops", value: `${moduleState.tasks.filter((task) => task.status !== "done").length} active` },
-      { label: "Model", value: modelStatus },
-      { label: "API", value: API_BASE.replace(/^https?:\/\//, "") },
-    ],
-    [agent, modelStatus, moduleState.dashboard.priorities.length, moduleState.tasks]
-  );
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", themeMode);
+    localStorage.setItem("taskforge_theme_mode", themeMode);
+  }, [themeMode]);
+
+  const stats = useMemo(() => {
+    const allStats = [
+      { label: "Agent", value: agent?.name || "Not Connected", connected: Boolean(agent?.name) },
+      {
+        label: "Productivity",
+        value: `${Math.min(moduleState.dashboard.priorities.length * 18 + 46, 95)}% focus score`,
+        connected: true,
+      },
+      {
+        label: "Open Loops",
+        value: `${moduleState.tasks.filter((task) => task.status !== "done").length} active`,
+        connected: true,
+      },
+      { label: "Model", value: modelStatus, connected: modelStatus === "available" },
+      { label: "API", value: API_BASE.replace(/^https?:\/\//, ""), connected: modelStatus !== "offline" },
+    ];
+
+    return allStats.filter((item) => item.connected);
+  }, [agent, modelStatus, moduleState.dashboard.priorities.length, moduleState.tasks]);
 
   const filteredNotes = useMemo(() => {
     if (!searchNote.trim()) {
@@ -1046,6 +1076,17 @@ export function App() {
               </button>
             ))}
           </nav>
+
+          <section className="sidebar-settings">
+            <h3>Settings</h3>
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setThemeMode((prev) => (prev === "light" ? "dark" : "light"))}
+            >
+              Theme: {themeMode === "light" ? "Light" : "Dark"}
+            </button>
+          </section>
         </aside>
 
         <section className="content">
@@ -1058,10 +1099,6 @@ export function App() {
           <div>
             <p className="eyebrow">Nosana x ElizaOS</p>
             <h1>Personal Life Automation</h1>
-            <p className="subtext">
-              Manage schedule, tasks, habits, email, finance, and decisions through one AI-native
-              command center.
-            </p>
           </div>
           <motion.div className="status-pill" whileHover={{ y: -2 }}>
             <span className="dot" />
@@ -1096,18 +1133,6 @@ export function App() {
           </motion.div>
         </AnimatePresence>
         </section>
-
-        <aside className="right-rail card">
-          <h3>Context Notifications</h3>
-          <p className="eyebrow">Model Status: {modelStatus}</p>
-          <ul className="plain-list notifications">
-            {moduleState.notifications.map((item) => (
-              <li key={item}>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </aside>
       </main>
     </div>
   );

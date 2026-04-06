@@ -1,17 +1,35 @@
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
 
 :root {
-  --bg-0: #f7f6f3;
-  --bg-1: #f3f2ee;
+  --bg-0: #f4f6fb;
+  --bg-1: #eef2fa;
   --bg-2: #ffffff;
-  --panel: #ffffff;
-  --panel-border: #e7e5df;
-  --text: #37352f;
-  --muted: #78736a;
-  --brand: #2f6feb;
-  --brand-2: #2ea043;
-  --highlight: #9a6700;
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 10px 28px rgba(15, 23, 42, 0.04);
+  --panel: rgba(255, 255, 255, 0.86);
+  --panel-border: rgba(164, 178, 204, 0.3);
+  --surface-soft: rgba(255, 255, 255, 0.6);
+  --surface-elevated: #ffffff;
+  --text: #1a2438;
+  --muted: #5f6d85;
+  --brand: #3a6ff7;
+  --brand-2: #00a38c;
+  --highlight: #9b5c00;
+  --shadow: 0 10px 30px rgba(13, 25, 52, 0.08), 0 1px 3px rgba(13, 25, 52, 0.06);
+}
+
+html[data-theme="dark"] {
+  --bg-0: #0a1020;
+  --bg-1: #111a2e;
+  --bg-2: #17233d;
+  --panel: rgba(19, 29, 52, 0.78);
+  --panel-border: rgba(100, 125, 173, 0.35);
+  --surface-soft: rgba(24, 36, 64, 0.72);
+  --surface-elevated: #1a2949;
+  --text: #e8eefb;
+  --muted: #adc0e1;
+  --brand: #78a2ff;
+  --brand-2: #57d8c8;
+  --highlight: #ffce78;
+  --shadow: 0 20px 45px rgba(1, 4, 14, 0.45), 0 1px 2px rgba(1, 4, 14, 0.35);
 }
 
 * {
@@ -28,8 +46,8 @@ body,
 body {
   font-family: "IBM Plex Sans", sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at 8% -2%, #ffffff 0%, transparent 34%),
-    radial-gradient(circle at 92% 0%, #ecebe7 0%, transparent 28%),
+  background: radial-gradient(circle at 8% -2%, rgba(255, 255, 255, 0.85) 0%, transparent 34%),
+    radial-gradient(circle at 92% 0%, rgba(114, 148, 230, 0.16) 0%, transparent 32%),
     linear-gradient(180deg, var(--bg-0), var(--bg-1));
 }
 
@@ -71,13 +89,14 @@ body {
 
 .shell-grid {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 300px;
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
 
 .sidebar {
-  background: rgba(247, 246, 243, 0.94);
+  background: var(--panel);
+  backdrop-filter: blur(14px);
   border: 1px solid var(--panel-border);
   border-radius: 12px;
   box-shadow: var(--shadow);
@@ -98,6 +117,22 @@ body {
   gap: 0.35rem;
 }
 
+.sidebar-settings {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--panel-border);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.sidebar-settings h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .side-link {
   border: 1px solid transparent;
   color: var(--muted);
@@ -113,8 +148,8 @@ body {
 .side-link:hover,
 .side-link.active {
   color: var(--text);
-  border-color: #dfddd6;
-  background: #ebe9e3;
+  border-color: var(--panel-border);
+  background: var(--surface-soft);
 }
 
 .content {
@@ -152,8 +187,29 @@ body {
   max-width: 40rem;
 }
 
+.hero-controls {
+  margin-top: 0.45rem;
+}
+
+.settings-btn {
+  border: 1px solid var(--panel-border);
+  background: var(--surface-elevated);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.26rem 0.52rem;
+  font: inherit;
+  font-size: 0.72rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.settings-btn:hover {
+  background: var(--surface-soft);
+}
+
 .status-pill {
-  background: var(--panel);
+  background: var(--surface-elevated);
   border: 1px solid var(--panel-border);
   border-radius: 999px;
   padding: 0.56rem 0.85rem;
@@ -179,10 +235,11 @@ body {
 }
 
 .stat-card {
-  background: var(--panel);
+  background: var(--surface-elevated);
   border: 1px solid var(--panel-border);
   border-radius: 10px;
   padding: 0.75rem 0.85rem;
+  backdrop-filter: blur(8px);
 }
 
 .stat-card span {
@@ -215,6 +272,7 @@ body {
   border-radius: 12px;
   padding: 0.95rem;
   box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
 }
 
 .card h3 {
@@ -636,19 +694,6 @@ body {
   border-radius: 999px;
 }
 
-.right-rail {
-  position: sticky;
-  top: 1rem;
-}
-
-.notifications li {
-  padding: 0.68rem;
-}
-
-.notifications li span {
-  color: var(--text);
-}
-
 .chat-panel {
   padding: 0;
   overflow: hidden;
@@ -778,6 +823,62 @@ body {
   background: #275ec9;
 }
 
+html[data-theme="dark"] .timeline-row,
+html[data-theme="dark"] .plain-list li,
+html[data-theme="dark"] .task-chip,
+html[data-theme="dark"] .habit-card,
+html[data-theme="dark"] .email-modern-summary,
+html[data-theme="dark"] .email-modern-list,
+html[data-theme="dark"] .email-list-item,
+html[data-theme="dark"] .email-modern-detail,
+html[data-theme="dark"] .gmail-classified-item,
+html[data-theme="dark"] .email-card,
+html[data-theme="dark"] .note-item,
+html[data-theme="dark"] .gmail-action-btn,
+html[data-theme="dark"] .prompt-chip,
+html[data-theme="dark"] .composer input,
+html[data-theme="dark"] .gmail-form input,
+html[data-theme="dark"] .gmail-form textarea,
+html[data-theme="dark"] .search-input,
+html[data-theme="dark"] .settings-btn {
+  background: var(--surface-soft);
+  border-color: var(--panel-border);
+  color: var(--text);
+}
+
+html[data-theme="dark"] .timeline-row.active,
+html[data-theme="dark"] .email-list-item.active {
+  background: rgba(52, 82, 143, 0.46);
+  border-color: rgba(133, 166, 230, 0.48);
+}
+
+html[data-theme="dark"] .email-detail-tags span {
+  background: rgba(50, 92, 72, 0.45);
+  border-color: rgba(106, 178, 141, 0.38);
+  color: #d7f5e7;
+}
+
+html[data-theme="dark"] .email-detail-meta span {
+  background: rgba(31, 45, 75, 0.74);
+  border-color: rgba(111, 137, 189, 0.48);
+  color: var(--muted);
+}
+
+html[data-theme="dark"] .bubble.user {
+  background: rgba(58, 104, 211, 0.32);
+  border-color: rgba(123, 168, 255, 0.52);
+}
+
+html[data-theme="dark"] .bubble.agent {
+  background: rgba(41, 134, 113, 0.26);
+  border-color: rgba(99, 207, 181, 0.42);
+}
+
+html[data-theme="dark"] .bubble.system {
+  background: rgba(145, 107, 42, 0.28);
+  border-color: rgba(219, 180, 110, 0.44);
+}
+
 .composer button[disabled] {
   opacity: 0.6;
   cursor: not-allowed;
@@ -799,11 +900,6 @@ body {
 @media (max-width: 1200px) {
   .shell-grid {
     grid-template-columns: 220px minmax(0, 1fr);
-  }
-
-  .right-rail {
-    grid-column: 1 / -1;
-    position: static;
   }
 }
 
