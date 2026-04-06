@@ -305,12 +305,43 @@ const createEmptySnapshot = (): ModuleSnapshot => ({
   notifications: defaultNotifications(),
 });
 
-const getSnapshotForUser = (userKey: string): ModuleSnapshot => {
+const mergeWithDefault = <T extends Record<string, unknown>>(value: unknown, defaults: T): T => {
+  if (typeof value !== "object" || value === null) {
+    return defaults;
+  }
+
+  return {
+    ...defaults,
+    ...(value as Record<string, unknown>),
+  } as T;
+};
+
+const createSnapshotFromComponents = (components: {
+  dashboardComponent: Component;
+  emailComponent: Component;
+  tasksComponent: Component;
+  habitsComponent: Component;
+  knowledgeComponent: Component;
+  financeComponent: Component;
+  notificationsComponent: Component;
+}): ModuleSnapshot => {
+  return {
+    dashboard: mergeWithDefault(components.dashboardComponent.data, defaultDashboard()),
+    emails: mergeWithDefault(components.emailComponent.data, defaultEmails()),
+    tasks: mergeWithDefault(components.tasksComponent.data, defaultTasks()),
+    habits: mergeWithDefault(components.habitsComponent.data, defaultHabits()),
+    knowledge: mergeWithDefault(components.knowledgeComponent.data, defaultKnowledge()),
+    finance: mergeWithDefault(components.financeComponent.data, defaultFinance()),
+    notifications: mergeWithDefault(components.notificationsComponent.data, defaultNotifications()),
+  };
+};
+
+const getSnapshotForUser = (userKey: string, seed?: ModuleSnapshot): ModuleSnapshot => {
   const existing = moduleStateByUser.get(userKey);
   if (existing) {
     return existing;
   }
-  const initial = createEmptySnapshot();
+  const initial = seed ?? createEmptySnapshot();
   moduleStateByUser.set(userKey, initial);
   return initial;
 };
@@ -1013,7 +1044,18 @@ const getModuleData = async (runtime: IAgentRuntime, ctx: UserContext) => {
   const financeComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.FINANCE, defaultFinance);
   const notificationsComponent = await getOrCreateComponent(runtime, ctx, COMPONENT_TYPES.NOTIFICATIONS, defaultNotifications);
 
-  const snapshot = getSnapshotForUser(ctx.userKey);
+  const snapshot = getSnapshotForUser(
+    ctx.userKey,
+    createSnapshotFromComponents({
+      dashboardComponent,
+      emailComponent,
+      tasksComponent,
+      habitsComponent,
+      knowledgeComponent,
+      financeComponent,
+      notificationsComponent,
+    })
+  );
   dashboardComponent.data = snapshot.dashboard as unknown as Record<string, unknown>;
   emailComponent.data = snapshot.emails as unknown as Record<string, unknown>;
   tasksComponent.data = snapshot.tasks as unknown as Record<string, unknown>;
